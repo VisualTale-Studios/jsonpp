@@ -1,0 +1,98 @@
+// VisualTale-Studios parser generator.
+%parser.entry=Jsonpp
+%parser.class=JsonppParser
+%parser.namespace=jsonpp
+%parser.target=csharp
+%parser.minimize=true
+%parser.table=false
+%parser.timeout=50000000
+%parser.inline=0
+%parser.debug=true
+%parser.state=false
+//%parser.reverse=true
+%parser.break=true
+%token.clarity=false
+%token.callback=false
+%token.auto=true
+%import System.Runtime.CompilerServices
+%import System.Collections.Generic
+
+((a-z)|(A-Z)|_)((a-z)|(A-Z)|(0-9)|_)*											^ID
+\-?(0-9)+(\.(0-9)+)?															^NUMBER#1
+(NUMBER)e(NUMBER)																^SCIENTIFIC#1
+(A-Z|a-z|0-9)																	^NCODE#1
+\\u(NCODE)(NCODE)(NCODE)(NCODE)													^UNICODE#1
+0x(NCODE)(NCODE)																^HEX#1
+\\.																				^ESCAPE
+^\"|(\\\")																		^CHAR
+\"(CHAR)*\"																		^STRING
+null																			^NULL#1
+true																			^TRUE#1
+false																			^FALSE#1
+(\ |\n|\r|\t)+			
+\/\/(^\n)*																		#3
+'/*'..'*/'																		#3	
+
+rule Jsonpp<Jsonpp>
+  : Jsonpp_ext Jsonpp_item														^new Jsonpp($1, $2)		
+  ;
+
+rule Jsonpp_ext<JsonppExts>
+  :																				^new JsonppExts()
+  | Jsonpp_pp																	^new JsonppExts($1)
+  | Jsonpp_ext Jsonpp_pp														^$1.Add($2)
+  ;
+
+rule Jsonpp_item<JsonppItem>
+  : 'null'																		^new JsonppNull($1, this)
+  | 'true'																		^new JsonppTrue($1, this)
+  | 'false'																		^new JsonppFalse($1, this)
+  | NUMBER																		^new JsonppNumber($1, mInput, this)
+  | SCIENTIFIC																	^new JsonppScientific($1, mInput, this)
+  | UNICODE																		^new JsonppUnicode($1, mInput, this)
+  | HEX																			^new JsonppHex($1, mInput, this)
+  | STRING																		^new JsonppString($1, mInput, this)
+  | '{' Jsonpp_object_items '}'													^$2;$2.Finish(this)
+  | '[' Jsonpp_array_items ']'													^$2
+  | ID '{' Jsonpp_array_items '}'												^new JsonppSchemaObject($1, $3, mInput, this)
+  ;
+
+rule Jsonpp_object_items<JsonppObject>
+  :																				^new JsonppObject()
+  | Jsonpp_object_item															^new JsonppObject($1)
+  | Jsonpp_object_items ',' Jsonpp_object_item									^$1.Add($3)
+  ;
+
+rule Jsonpp_object_item<JsonppObjectItem>
+  : ID ':' Jsonpp_item															^new JsonppObjectAlisaItem($1, $3, mInput, this)
+  | STRING ':' Jsonpp_item														^new JsonppObjectFieldItem($1, $3, mInput, this)
+  ;
+
+rule Jsonpp_array_items<JsonppArray>
+  :																				^new JsonppArray()
+  | Jsonpp_item																	^new JsonppArray($1)
+  | Jsonpp_array_items ',' Jsonpp_item											^$1.Add($3)
+  ;
+
+// ¿©’π”Ô∑®
+rule Jsonpp_pp<JsonppExt>
+  : ID '=' STRING																^new JsonppDefineAlisa($1, $3, mInput, this)
+  | 'schema' ID	'{' Jsonpp_schema_items '}'										^new JsonppSchema($2, $4, mInput, this)
+  ;
+
+rule Jsonpp_schema_items<JsonppSchemaItems>
+  : Jsonpp_schema_item															^new JsonppSchemaItems($1)
+  | Jsonpp_schema_items Jsonpp_schema_item										^$1.Add($2)
+  ;
+
+rule Jsonpp_schema_item<JsonppSchemaItem>
+  : Jsonpp_schema_item_type STRING												^new JsonppSchemaField($1, $2, mInput, this)
+  | Jsonpp_schema_item_type ID													^new JsonppUsingAlisa($1, $2, mInput, this)
+  ;
+
+rule Jsonpp_schema_item_type<DuckTyping>
+  : 'bool'																		^DuckTyping.Bool
+  | 'string'																	^DuckTyping.String
+  | 'number'																	^DuckTyping.Number
+  | ID																			^GetDuckTypeing($1, mInput)
+  ;
